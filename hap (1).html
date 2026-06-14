@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full bg-[#F2E7E1] text-[#2A0F16]">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HAP - 맞춤형 운동 처방 & 타이머</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bgMain: '#F2E7E1',      /* 밝고 온화한 베이지색 바탕 */
+                        cardMain: '#FFFFFF',    /* 메인 카드 백그라운드 */
+                        cardInner: '#FDFBF7',   /* 이너 레이아웃용 따뜻한 크림색 */
+                        brand: {
+                            50: '#FDF7F8',
+                            100: '#F9EBEF',
+                            400: '#8A2D3C',
+                            500: '#5B1A2A',     /* 메인 버건디 테마 포인트 */
+                            600: '#4A1320',     /* 짙은 버건디 */
+                            700: '#2A0F16',     /* 딥 플럼 버건디 텍스트용 */
+                            950: '#0B0B0F',     /* 다크 블랙 포인트 */
+                        },
+                        taupe: {
+                            300: '#D5C4BD',
+                            500: '#B08D7A',     /* 테두리 및 서브 폰트용 로즈골드 토프 */
+                            600: '#9B7463',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- 🧠 TensorFlow.js 및 PoseNet 기계학습 전용 가속 CDN 주입 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans KR', sans-serif; background-color: #F2E7E1; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #F2E7E1; }
+        ::-webkit-scrollbar-thumb { background: #B08D7A; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #5B1A2A; }
+    </style>
+</head>
+<body class="min-h-full bg-bgMain text-brand-700 pb-16 relative">
+
+    <!-- 🏷️ 시스템 고정 워터마크 문구 -->
+    <div class="fixed top-4 left-4 z-50 pointer-events-none select-none text-[11px] font-black tracking-widest text-brand-500/15 md:text-brand-500/25">20511 조성건</div>
+    <div class="fixed top-4 right-4 z-50 pointer-events-none select-none text-[11px] font-black tracking-widest text-brand-500/15 md:text-brand-500/25">버전: 0.9A</div>
+    <div class="fixed bottom-4 left-4 z-50 pointer-events-none select-none text-[11px] font-black tracking-widest text-brand-500/15 md:text-brand-500/25">배정고등학교</div>
+    <div class="fixed bottom-4 right-4 z-50 pointer-events-none select-none text-[11px] font-black tracking-widest text-brand-500/15 md:text-brand-500/25">코딩으로 세상을 바꾸자!</div>
+
+    <div id="toastContainer" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none w-11/12 max-w-sm"></div>
+
+    <header class="bg-cardMain border border-taupe-500/30 shadow-sm px-6 py-4 max-w-4xl mx-auto w-full mt-4 rounded-2xl flex items-center gap-3 shrink-0">
+        <div class="bg-brand-500 p-2.5 rounded-xl text-white flex items-center justify-center shadow-md shadow-brand-500/20">
+            <i data-lucide="shield-plus" class="w-6 h-6"></i>
+        </div>
+        <div>
+            <h1 class="text-lg font-black tracking-tight text-brand-700">
+                HAP <span class="text-[10px] bg-brand-100 text-brand-500 px-2 py-0.5 rounded font-bold border border-brand-500/20">헬스 어시스턴스 프로그램</span>
+            </h1>
+            <p class="text-xs text-taupe-600 font-medium">신체 계측 & 안전 목적 기반 운동 자동 큐레이터</p>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto w-full px-4 md:px-0 mt-6 space-y-6">
+        
+        <!-- [1단계] 입력 화면 -->
+        <section id="setupScreen" class="bg-cardMain border border-taupe-500/35 rounded-2xl p-5 md:p-6 shadow-md relative overflow-hidden animate-fade-in">
+            <div class="absolute -right-16 -top-16 w-36 h-36 bg-brand-500/5 rounded-full blur-2xl"></div>
+            
+            <h2 class="text-xs font-bold text-brand-500 uppercase tracking-wider mb-5 flex items-center gap-2">
+                <span class="w-5 h-5 bg-brand-100 text-brand-500 rounded-full flex items-center justify-center text-[10px] font-black border border-brand-500/20">1</span>
+                내 신체 사양 및 목표 프로필 등록
+            </h2>
+            
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-taupe-600 mb-1">연령 (나이)</label>
+                    <input id="userAge" type="number" value="18" min="1" class="w-full bg-cardInner border border-taupe-500/30 focus:border-brand-500 rounded-xl px-3 py-2 text-sm text-brand-700 outline-none transition font-semibold">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-taupe-600 mb-1">성별</label>
+                    <select id="userGender" class="w-full bg-cardInner border border-taupe-500/30 focus:border-brand-500 rounded-xl px-3 py-2.5 text-sm text-brand-700 outline-none transition font-semibold">
+                        <option value="남성">남성 (Male)</option>
+                        <option value="여성">여성 (Female)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-taupe-600 mb-1">키 (cm)</label>
+                    <input id="userHeight" type="number" value="180" min="1" class="w-full bg-cardInner border border-taupe-500/30 focus:border-brand-500 rounded-xl px-3 py-2 text-sm text-brand-700 outline-none transition font-semibold">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-taupe-600 mb-1">몸무게 (kg)</label>
+                    <input id="userWeight" type="number" value="68" min="1" class="w-full bg-cardInner border border-taupe-500/30 focus:border-brand-500 rounded-xl px-3 py-2 text-sm text-brand-700 outline-none transition font-semibold">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <div>
+                    <label class="block text-xs font-bold text-taupe-600 mb-1">트레이닝 목표</label>
+                    <select id="userGoal" class="w-full bg-cardInner border border-taupe-500/30 focus:border-brand-500 rounded-xl px-3 py-2.5 text-sm text-brand-700 outline-none transition font-semibold">
+                        <option value="muscle">💪 근육 성장 및 활성화 (Hypertrophy)</option>
+                        <option value="rehab">🩹 재활 및 불균형 교정 (Rehabilitation)</option>
+                        <option value="stamina">🏃 심폐 지구력 확보 (Cardio & Stamina)</option>
+                        <option value="diet">🔥 다이어트 및 체지방 컷팅 (Weight Loss)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-taupe-600 mb-1">운동 강도 (숙련도)</label>
+                    <select id="userLevel" class="w-full bg-cardInner border border-taupe-500/30 focus:border-brand-500 rounded-xl px-3 py-2.5 text-sm text-brand-700 outline-none transition font-semibold">
+                        <option value="beginner">🔰 초급 (안전 위주, 넉넉한 휴식)</option>
+                        <option value="intermediate" selected>🏃 중급 (표준 운동 강도)</option>
+                        <option value="advanced">🔥 상급 (높은 자극 강도, 타이트한 휴식)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <label class="block text-xs font-bold text-taupe-600 mb-1">운동 진행 시 통증이나 불편함을 느끼는 부위 (중복 선택)</label>
+                <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-1.5">
+                    <label class="flex items-center gap-1.5 bg-cardInner p-2.5 rounded-xl border border-taupe-500/25 cursor-pointer text-xs transition hover:border-taupe-500 font-semibold text-brand-700">
+                        <input type="checkbox" name="pain" value="목" class="accent-brand-500"> 목
+                    </label>
+                    <label class="flex items-center gap-1.5 bg-cardInner p-2.5 rounded-xl border border-taupe-500/25 cursor-pointer text-xs transition hover:border-taupe-500 font-semibold text-brand-700">
+                        <input type="checkbox" name="pain" value="어깨" class="accent-brand-500"> 어깨
+                    </label>
+                    <label class="flex items-center gap-1.5 bg-cardInner p-2.5 rounded-xl border border-taupe-500/25 cursor-pointer text-xs transition hover:border-taupe-500 font-semibold text-brand-700">
+                        <input type="checkbox" name="pain" value="허리" class="accent-brand-500"> 허리
+                    </label>
+                    <label class="flex items-center gap-1.5 bg-cardInner p-2.5 rounded-xl border border-taupe-500/25 cursor-pointer text-xs transition hover:border-taupe-500 font-semibold text-brand-700">
+                        <input type="checkbox" name="pain" value="무릎" class="accent-brand-500"> 무릎
+                    </label>
+                    <label class="flex items-center gap-1.5 bg-cardInner p-2.5 rounded-xl border border-taupe-500/25 cursor-pointer text-xs transition hover:border-taupe-500 font-semibold text-brand-700">
+                        <input type="checkbox" name="pain" value="손목" class="accent-brand-500"> 손목/엘보우
+                    </label>
+                    <label class="flex items-center gap-1.5 bg-cardInner p-2.5 rounded-xl border border-taupe-500/25 cursor-pointer text-xs transition hover:border-taupe-500 font-semibold text-brand-700">
+                        <input type="checkbox" name="pain" value="발목" class="accent-brand-500"> 발목
+                    </label>
+                </div>
+            </div>
+
+            <button onclick="analyzeAndPrescribe()" class="w-full mt-6 bg-brand-500 hover:bg-brand-600 text-white font-black py-3.5 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-brand-500/20 uppercase tracking-wider">
+                <i data-lucide="activity" class="w-4 h-4"></i> 신체 정밀 분석 및 운동 처방 받기
+            </button>
+        </section>
+
+        <!-- [2단계] 처방 분석 및 사유 가이드 설명 화면 -->
+        <section id="analysisScreen" class="hidden space-y-6 animate-fade-in">
+            <div class="flex items-center justify-between">
+                <button onclick="goBackToSetup()" class="flex items-center gap-2 bg-cardMain hover:bg-brand-50 text-brand-500 px-4 py-2 rounded-xl text-xs border border-taupe-500/30 font-black transition shadow-sm">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> 신체 정보 다시 입력하기
+                </button>
+                <span class="text-[10px] text-brand-500 font-black tracking-widest uppercase bg-brand-100 px-3 py-1.5 rounded-lg border border-brand-500/20">Step 2: Diagnosis & Prescription</span>
+            </div>
+
+            <!-- 체형 및 BMI 종합 분석 패널 -->
+            <div class="bg-cardMain border border-taupe-500/35 rounded-2xl p-6 shadow-md relative overflow-hidden">
+                <div class="absolute -right-20 -top-20 w-44 h-44 bg-brand-500/5 rounded-full blur-2xl"></div>
+                
+                <h3 class="text-sm font-black text-brand-700 flex items-center gap-2 mb-4">
+                    <i data-lucide="file-text" class="text-brand-500 w-5 h-5"></i> 신체 지수 및 체형 임상 분석 결과
+                </h3>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+                    <!-- BMI 요약 도크 -->
+                    <div class="md:col-span-1 bg-brand-50 border border-brand-100 p-5 rounded-2xl text-center shadow-inner flex flex-col justify-center items-center h-full">
+                        <span class="text-[10px] text-brand-400 font-black uppercase tracking-wider">체질량 지수 (BMI)</span>
+                        <span id="analysisBmiValue" class="text-3xl font-black text-brand-500 my-2">--.-</span>
+                        <span id="analysisBmiStatus" class="text-xs bg-brand-500 text-white px-3 py-1 rounded-full font-bold shadow-sm">분석 중</span>
+                    </div>
+
+                    <!-- 종합 피드백 텍스트 -->
+                    <div class="md:col-span-3 space-y-3">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-black text-brand-500 bg-brand-100 px-2.5 py-1 rounded-lg" id="analysisTargetGoal">목표: 대기</span>
+                            <span class="text-xs font-black text-taupe-600 bg-cardInner border border-taupe-300 px-2.5 py-1 rounded-lg" id="analysisIntensityLevel">강도: 대기</span>
+                        </div>
+                        <div id="analysisDiagnosticsText" class="text-xs text-slate-600 leading-relaxed font-semibold">
+                            사용자의 신체 계측 정보가 처리되어 맞춤 기조 진단서가 이곳에 출력됩니다.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 상세 처방 사유 리스트 -->
+            <div class="bg-cardMain border border-taupe-500/35 rounded-2xl p-6 shadow-md">
+                <h3 class="text-sm font-black text-brand-700 flex items-center gap-2 mb-2">
+                    <i data-lucide="shield-check" class="text-brand-500 w-5 h-5"></i> 맞춤 설계된 루틴 상세 구성 및 처방 사유서
+                </h3>
+                <p class="text-xs text-taupe-600 font-medium mb-5">통증 관절 유무와 운동 성향에 따라 조합된 각 훈련 시퀀스들의 과학적 근거를 설명합니다.</p>
+
+                <!-- 처방된 운동 설명 카드들 (동적 배치) -->
+                <div id="prescriptionDetailsContainer" class="space-y-4"></div>
+            </div>
+
+            <!-- 하단 핵심 제어 버튼 그룹 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button onclick="regeneratePrescription()" class="bg-cardMain hover:bg-brand-50 border-2 border-brand-500 text-brand-500 font-black py-4 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-sm">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> 🔄 새 운동 루틴으로 재구성하기
+                </button>
+                <button onclick="startWorkoutSession()" class="bg-brand-500 hover:bg-brand-600 text-white font-black py-4 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-brand-500/20 uppercase tracking-widest">
+                    <i data-lucide="play" class="w-4 h-4 fill-current"></i> 🏃 맞춤 처방대로 운동 시작하기
+                </button>
+            </div>
+        </section>
+
+        <!-- [3단계] 메인 타이머 플레이어 구조 -->
+        <section id="resultSection" class="hidden space-y-4 animate-fade-in">
+            <div class="flex items-center justify-between">
+                <button onclick="goBackToAnalysis()" class="flex items-center gap-2 bg-cardMain hover:bg-brand-50 text-brand-500 px-4 py-2 rounded-xl text-xs border border-taupe-500/30 font-black transition shadow-sm">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> 처방 분석 화면으로 가기
+                </button>
+                <span class="text-[10px] text-brand-500 font-black tracking-widest uppercase bg-brand-100 px-3 py-1.5 rounded-lg border border-brand-500/20">Step 3: Training Studio</span>
+            </div>
+
+            <div class="bg-cardMain border border-taupe-500/35 rounded-2xl p-6 text-center flex flex-col items-center relative overflow-hidden shadow-md">
+                <div class="grid grid-cols-1 md:grid-cols-2 w-full gap-6 items-center">
+                    
+                    <!-- 왼쪽 구역: 타이머, 프리뷰, 제어기 -->
+                    <div class="flex flex-col items-center border-b md:border-b-0 md:border-r border-taupe-500/20 pb-6 md:pb-0 md:pr-6 w-full">
+                        <span id="timerBadge" class="text-[9px] bg-brand-100 text-brand-500 px-3 py-1 rounded-full border border-brand-500/15 font-black uppercase">READY</span>
+                        <h4 id="timerExName" class="text-base font-black text-brand-700 mt-2.5">동작 리스트에서 운동을 고르세요</h4>
+                        
+                        <!-- ⚡ 실시간 AI 듀얼 코칭 뷰포트 (가이드 및 AI 거울 실시간 융합) -->
+                        <div class="grid grid-cols-2 gap-3 w-full max-w-sm my-4 h-36 md:h-40 relative">
+                            <!-- 1. 정석 가이드 영상 카드 -->
+                            <div class="relative bg-cardInner rounded-2xl border border-taupe-500/25 flex flex-col items-center justify-center text-taupe-500 shadow-inner overflow-hidden p-1.5">
+                                <span class="absolute top-1.5 left-1.5 text-[8px] bg-brand-100/90 text-brand-600 border border-brand-500/15 px-1.5 py-0.5 rounded font-black uppercase tracking-wider z-10 font-sans">정석 가이드</span>
+                                <div id="timerVisualContainer" class="w-full h-full flex items-center justify-center">
+                                    <i data-lucide="video-off" class="w-7 h-7 opacity-30"></i>
+                                </div>
+                            </div>
+                            
+                            <!-- 2. 실시간 AI 자세 판독 및 내 모습 거울 카드 -->
+                            <div id="cameraPane" class="relative bg-cardInner rounded-2xl border border-taupe-500/25 flex flex-col items-center justify-center text-taupe-500 shadow-inner overflow-hidden p-1.5 transition-all duration-300">
+                                <span class="absolute top-1.5 left-1.5 text-[8px] bg-taupe-300/90 text-brand-700 border border-taupe-500/20 px-1.5 py-0.5 rounded font-black uppercase tracking-wider z-10 font-sans">내 모습 거울</span>
+                                
+                                <!-- 비디오 돔 및 뼈대 드로잉 캔버스 -->
+                                <video id="cameraMirror" autoplay playsinline muted class="w-full h-full object-cover rounded-xl scale-x-[-1] hidden bg-slate-50"></video>
+                                <canvas id="poseCanvas" class="absolute inset-1.5 w-[calc(100%-12px)] h-[calc(100%-12px)] object-cover rounded-xl scale-x-[-1] hidden z-10 pointer-events-none"></canvas>
+
+                                <div id="cameraPlaceholder" class="flex flex-col items-center justify-center text-center p-2 text-taupe-500 space-y-1.5">
+                                    <i data-lucide="camera-off" class="w-5 h-5 opacity-40"></i>
+                                    <span class="text-[8px] font-bold leading-tight">카메라 오프 상태</span>
+                                </div>
+
+                                <!-- AI 자세 피드백 배너 바 -->
+                                <div id="aiFeedbackBanner" class="absolute bottom-1.5 left-1.5 right-1.5 bg-[#5B1A2A]/95 text-white p-2 rounded-xl text-left hidden z-20 transition-all duration-300">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-[8px] font-black uppercase tracking-wider">자세 정확도</span>
+                                        <span id="aiScoreText" class="text-[10px] font-black">95%</span>
+                                    </div>
+                                    <div class="w-full bg-[#3D0A14] h-1 rounded-full mt-1 overflow-hidden">
+                                        <div id="aiScoreBar" class="bg-[#10b981] h-full w-[95%] transition-all duration-300"></div>
+                                    </div>
+                                    <p id="aiActionFeedback" class="text-[8px] font-bold mt-1 text-slate-200 truncate">분석 기동 중</p>
+                                </div>
+
+                                <!-- AI 모델 로드 오버레이 스피너 -->
+                                <div id="aiLoadingSpinner" class="absolute inset-0 bg-brand-500/90 backdrop-blur-xs flex flex-col items-center justify-center text-white p-4 text-center hidden z-30">
+                                    <div class="animate-spin rounded-full h-7 w-7 border-b-2 border-white mb-2"></div>
+                                    <p class="text-[9px] font-bold leading-normal text-brand-100">AI 모션 분석기 엔진<br>초기화 로딩 중...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 거울 및 AI 켜기 스위치 -->
+                        <button id="btnCameraToggle" onclick="toggleCameraMirror()" class="bg-cardInner hover:bg-brand-50 border border-taupe-500/35 hover:border-taupe-500 text-[10px] text-brand-500 font-extrabold px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all mb-4 shadow-sm">
+                            <i data-lucide="camera" class="w-3.5 h-3.5 text-brand-500"></i> <span id="cameraToggleText">내 모습 거울 및 AI 분석 켜기</span>
+                        </button>
+
+                        <div id="timerDisplay" class="text-4xl font-black text-brand-500 tracking-tight">00:00</div>
+                        
+                        <div class="flex items-center gap-2 mt-4">
+                            <button onclick="toggleTimer()" id="btnPlay" class="bg-brand-500 hover:bg-brand-600 text-white font-extrabold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition shadow-md shadow-brand-500/10">
+                                <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> 시작
+                            </button>
+                            <button onclick="resetTimer()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-taupe-500/25 px-5 py-2.5 rounded-xl text-xs font-bold transition">
+                                처음부터 리셋
+                            </button>
+                        </div>
+
+                        <!-- 자세 및 팁 수납장 -->
+                        <div class="mt-5 bg-cardInner p-4 rounded-xl border border-taupe-500/25 text-left w-full max-w-sm space-y-3.5 shadow-sm">
+                            <div class="flex items-start gap-2">
+                                <div class="bg-brand-100 p-1 rounded-lg text-brand-500 shrink-0 mt-0.5">
+                                    <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <h5 class="text-xs font-black text-brand-700">정밀 역학 동작 설명</h5>
+                                    <p id="timerExDesc" class="text-[11px] text-slate-600 mt-1 leading-relaxed font-semibold">운동을 선택하시면 이 자리에 상세한 수행 가이드라인이 채워집니다.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-2 pt-3 border-t border-taupe-500/20">
+                                <div class="bg-amber-100 p-1 rounded-lg text-amber-700 shrink-0 mt-0.5 border border-amber-200/50">
+                                    <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <h5 class="text-xs font-black text-amber-700">부상 방지 안전 팁</h5>
+                                    <p id="timerExTips" class="text-[11px] text-slate-600 mt-1 leading-relaxed font-semibold">주의가 요망되는 관절 부하 예방 수칙과 자세 꿀팁이 제공됩니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 오른쪽 구역: 실시간 세션 구성 시퀀스 카드 목록 -->
+                    <div class="text-left space-y-3 self-start w-full">
+                        <h4 class="text-xs font-black text-brand-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <i data-lucide="list-ordered" class="w-4 h-4 text-brand-500"></i> 구성된 운동 순서 및 상세 수행 가이드
+                        </h4>
+                        <div id="routineContainer" class="space-y-2 max-h-[420px] overflow-y-auto pr-1"></div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 완료 오버레이 모달 -->
+    <div id="completeModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-700/40 backdrop-blur-sm hidden">
+        <div class="bg-cardMain border border-taupe-500/35 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div class="w-16 h-16 bg-brand-50 border border-brand-500/20 text-brand-500 rounded-full flex items-center justify-center mx-auto text-3xl shadow-inner">🏆</div>
+            <div>
+                <h3 class="text-lg font-black text-brand-700">오늘의 훈련 완료!</h3>
+                <p class="text-xs text-slate-600 mt-2 leading-relaxed font-semibold">
+                    신체 계측 맞춤 처방 시퀀스를 안전하고 훌륭하게 완수하셨습니다. 매일 꾸준한 무브먼트가 당신을 강하게 만듭니다.
+                </p>
+            </div>
+            <button onclick="closeCompleteModal()" class="w-full bg-brand-500 hover:bg-brand-600 text-white font-black py-3 rounded-xl text-xs transition uppercase tracking-wider shadow-md">
+                메인으로 돌아가기
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 운동 벡터 및 가이드 정보 DB (안전 우회 및 동작 명확성 세팅)
+        const exerciseData = {
+            squat: {
+                name: "허벅지 앉았다 일어나기 (스쿼트)",
+                safeName: "벽에 기대어 버티기 (무릎 보호 스쿼트)",
+                desc: "골반 주변 근력과 하지 정렬을 바로잡는 하체 전반의 코어 운동입니다.",
+                tips: "발을 어깨너비로 벌리고 서서 무릎과 두 번째 발가락이 일직선이 되게 유지합니다. 앉을 때 상체가 과하게 숙여지지 않게 가슴을 열고 고관절을 지긋이 접어 주며, 균형을 위해 팔을 앞으로 편안하게 뻗어 줍니다.",
+                reason: "하체 중심 근육과 코어 활성화를 위한 필수 동작입니다.",
+                safeReason: "무릎 슬개골 관절의 하중을 분산시키고 안전한 정적 버티기(Wall Sit) 기전으로 대퇴사두근을 활성화하기 위해 처방되었습니다.",
+                painKey: "무릎",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="15" y1="90" x2="85" y2="90" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="45" cy="20" r="5" class="fill-[#2A0F16]">
+                            <animate attributeName="cy" values="20;38;20" dur="2.8s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                            <animate attributeName="cx" values="45;38;45" dur="2.8s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </circle>
+                        <path d="M45,26 L45,52 L45,72 L45,90">
+                            <animate attributeName="d"
+                                     values="M45,26 L45,52 L45,72 L45,90;
+                                             M38,44 L28,58 L48,68 L38,90;
+                                             M45,26 L45,52 L45,72 L45,90"
+                                     dur="2.8s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                        <path d="M45,30 L45,48">
+                            <animate attributeName="d"
+                                     values="M45,30 L45,48;
+                                             M38,44 L58,44;
+                                             M45,30 L45,48"
+                                     dur="2.8s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                      </svg>`
+            },
+            split: {
+                name: "매트 다리 양옆으로 벌리기 (다리찢기)",
+                safeName: "서서 골반 지지 다리 늘리기 (골반/무릎 안전 스트레칭)",
+                desc: "고관절 주변의 내전근과 대퇴 이두근 섬유를 넓게 이완해 하지 순환 가용력을 회복합니다.",
+                tips: "바닥에 안정되게 앉아 척추를 세운 뒤, 무릎 뒤쪽 힘줄이 과도하게 꺾이지 않는 임계점 내에서 양발을 서서히 벌려 호흡에 집중합니다.",
+                reason: "막혀 있던 하체 혈류 흐름을 정화하고 골반 주변 유연성을 복원하기 위해 처방되었습니다.",
+                safeReason: "대퇴인대의 미세 자극과 햄스트링 마찰 부하를 원천 배제하고자 가구 지지형 슬로우 가동 버티기 방식으로 감압 처방되었습니다.",
+                painKey: "무릎",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="10" y1="90" x2="90" y2="90" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="50" cy="40" r="5" class="fill-[#2A0F16]">
+                            <animate attributeName="cy" values="40;46;40" dur="3s" repeatCount="indefinite" />
+                        </circle>
+                        <path d="M50,45 L50,65">
+                            <animate attributeName="d" values="M50,45 L50,65; M50,49 L50,65; M50,45 L50,65" dur="3s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M50,65 L25,82 L15,90">
+                            <animate attributeName="d" values="M50,65 L25,82 L15,90; M50,65 L20,85 L10,90; M50,65 L25,82 L15,90" dur="3s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M50,65 L75,82 L85,90">
+                            <animate attributeName="d" values="M50,65 L75,82 L85,90; M50,65 L80,85 L90,90; M50,65 L75,82 L85,90" dur="3s" repeatCount="indefinite" />
+                        </path>
+                      </svg>`
+            },
+            burpee: {
+                name: "전신 심폐 지구력 단련 (버피)",
+                safeName: "무충격 차분히 짚고 일어서기 (슬로우 버피)",
+                desc: "상체 미는 사슬과 코어 하강 협응을 통해 단시간 대사 대사를 가속하는 전신 피지컬 훈련입니다.",
+                tips: "바르게 선 후 바닥을 정교하게 짚고, 한 발씩 곧게 뒤로 뻗어 안정을 잡은 다음 역순으로 가져와 차분하게 일어섭니다.",
+                reason: "속도감 있는 유무산소 대사 촉진과 다관절 전신 협응력을 끌어올리기 위해 루틴에 편입되었습니다.",
+                safeReason: "요추 관절 전단 부하 및 무릎 슬개골 충격을 완벽 방지하도록 순발 점프 운동 메커니즘을 소거하고 슬로우 짚기 패턴으로 대체 교정되었습니다.",
+                painKey: "허리",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="10" y1="90" x2="90" y2="90" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="50" cy="30" r="5" class="fill-[#2A0F16]">
+                            <animate attributeName="cx" values="50;50;35;50" dur="4s" repeatCount="indefinite" />
+                            <animate attributeName="cy" values="20;50;65;20" dur="4s" repeatCount="indefinite" />
+                        </circle>
+                        <path d="M50,25 L50,55 M50,55 L40,90 M50,55 L60,90">
+                            <animate attributeName="d"
+                                     values="M50,25 L50,55 M50,55 L40,90 M50,55 L60,90;
+                                             M50,55 L50,75 M50,75 L35,90 M50,75 L65,90;
+                                             M35,70 L65,70 M65,70 L75,90 M65,70 L55,90;
+                                             M50,25 L50,55 M50,55 L40,90 M50,55 L60,90"
+                                     dur="4s" repeatCount="indefinite" />
+                        </path>
+                      </svg>`
+            },
+            jumping_jack: {
+                name: "전신 팔벌려 높이뛰기",
+                safeName: "무충격 발가락 사이드 스텝 터치 (안전 높이뛰기)",
+                desc: "동적 림프 순환 자극을 가교하여 몸통 체지방 연소를 최대로 유인하는 유산소 칼로리 버닝 훈련입니다.",
+                tips: "제자리에서 가볍게 바운스를 타면서, 다리를 옆으로 벌림과 양손을 크게 원을 그려 머리 위에서 만나게 통제합니다.",
+                reason: "심폐 능력을 역동적으로 가속화하고 전신 노폐물 순환 대사를 돕기 위해 조합되었습니다.",
+                safeReason: "착지 시 발목 관절 및 아킬레스건에 가해지는 수직 압축 가속 마찰을 해소하고자 점프 없이 좌우 측면 터치 보조 스텝으로 완화 큐레이션 되었습니다.",
+                painKey: "발목",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="15" y1="90" x2="85" y2="90" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="50" cy="20" r="5" class="fill-[#2A0F16]">
+                            <animate attributeName="cy" values="20;18;20" dur="1.2s" repeatCount="indefinite" />
+                        </circle>
+                        <path d="M50,25 L50,60" />
+                        <path d="M50,60 L40,90 M50,60 L60,90">
+                            <animate attributeName="d"
+                                     values="M50,60 L45,90 M50,60 L55,90;
+                                             M50,60 L25,90 M50,60 L75,90;
+                                             M50,60 L45,90 M50,60 L55,90"
+                                     dur="1.2s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M50,30 L30,45 M50,30 L70,45">
+                            <animate attributeName="d"
+                                     values="M50,30 L40,55 M50,30 L60,55;
+                                             M50,30 L25,15 M50,30 L75,15;
+                                             M50,30 L40,55 M50,30 L60,55"
+                                     dur="1.2s" repeatCount="indefinite" />
+                        </path>
+                      </svg>`
+            },
+            pushup: {
+                name: "가슴 팔굽혀펴기 (푸쉬업)",
+                safeName: "벽 짚고 팔굽혀펴기 (어깨 보호 푸쉬업)",
+                desc: "가슴근육 및 삼각근, 견갑의 가동 범위를 전방위 조율하는 상체 대표 전신 운동입니다.",
+                tips: "손목은 팔꿈치 바로 밑 평행 각도로 위치시키고 날개뼈를 바르게 세워 몸 전체를 하나처럼 곧게 뻗은 채로 올렸다 내립니다.",
+                reason: "상체 미는 힘(Push)의 사슬을 자극하고 견갑골 주변 안정성을 활성화하기 위해 포함되었습니다.",
+                safeReason: "어깨 관절에 가해지는 직접적인 신체 하중 전단력을 분산하기 위해 수직 각도 벽 짚기 기반으로 감압 처방되었습니다.",
+                painKey: "어깨",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="15" y1="85" x2="90" y2="85" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="28" cy="41" r="5" class="fill-[#2A0F16]">
+                            <animate attributeName="cx" values="28;33;28" dur="3s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                            <animate attributeName="cy" values="41;59;41" dur="3s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </circle>
+                        <path d="M80,80 L38,48">
+                            <animate attributeName="d"
+                                     values="M80,80 L38,48;
+                                             M80,80 L43,66;
+                                             M80,80 L38,48"
+                                     dur="3s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                        <path d="M38,48 L38,64 L45,80">
+                            <animate attributeName="d"
+                                     values="M38,48 L38,64 L45,80;
+                                             M43,66 L28,70 L45,80;
+                                             M38,48 L38,64 L45,80"
+                                     dur="3s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                      </svg>`
+            },
+            bridge: {
+                name: "누워서 엉덩이 들기 (브릿지)",
+                safeName: "허리 고정 엉덩이 들기 (허리 보호 브릿지)",
+                desc: "허리의 압축 스트레스를 해소하고 약화된 엉덩이(둔근) 수축력을 단련하는 대표적인 코어 보조 운동입니다.",
+                tips: "바닥에 누워 양 무릎을 세운 뒤, 허리를 무리하게 꺾지 말고 배의 긴장을 고정시킨 채 엉덩이 근육 자체에 힘을 주며 골반을 하늘 방향으로 들어 올립니다.",
+                reason: "후면 사슬의 핵심인 둔근을 자극하고, 골반 정렬의 전방 안정을 가교하기 위해 선택되었습니다.",
+                safeReason: "요추 관절에 전단력을 일으키지 않도록 과도한 신전을 제어하고 안전 등척성 범위 내 둔근 수축을 유도하고자 처방되었습니다.",
+                painKey: "허리",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="15" y1="80" x2="85" y2="80" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="25" cy="74" r="5" class="fill-[#2A0F16]" />
+                        <path d="M35,78 L55,78 L72,58 L75,78">
+                            <animate attributeName="d"
+                                     values="M35,78 L55,78 L72,58 L75,78;
+                                             M35,78 L55,58 L72,58 L75,78;
+                                             M35,78 L55,78 L72,58 L75,78"
+                                     dur="2.8s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                      </svg>`
+            },
+            birddog: {
+                name: "엎드려 팔다리 뻗기 (버드독)",
+                safeName: "엎드려 네발 자세 유지 (목/허리 안전 버드독)",
+                desc: "대각선 상하체의 연쇄적 협응력을 이끌고 동적 척추 안정을 강화하는 맨몸 코어 훈련입니다.",
+                tips: "네발기기 자세에서 등판을 평평히 곧게 펴고 한쪽 손과 반대쪽 다리를 가볍게 지면과 수평이 될 때까지 뻗어 흔들리지 않고 버텨줍니다.",
+                reason: "다각 척추 기립근 및 등 심부 코어를 자극하여 척추 정렬을 평평하게 유지하기 위해 포함되었습니다.",
+                safeReason: "목과 경추 관절 스트레스를 줄이도록 무리한 사지 신전을 제어하고 엎드린 네발 지지 수평 정력으로 대체 큐레이션 되었습니다.",
+                painKey: "목",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="15" y1="80" x2="85" y2="80" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="35" cy="46" r="5" class="fill-[#2A0F16]" />
+                        <path d="M43,52 L63,52" />
+                        <path d="M43,52 L43,78" />
+                        <path d="M63,52 L63,78" />
+                        <path d="M43,52 L43,78 M63,52 L63,78">
+                            <animate attributeName="d"
+                                     values="M43,52 L43,78 M63,52 L63,78;
+                                             M43,52 L23,52 M63,52 L83,52;
+                                             M43,52 L43,78 M63,52 L63,78"
+                                     dur="3.2s" repeatCount="indefinite" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                      </svg>`
+            },
+            cardio: {
+                name: "제자리 가볍게 걷기 (유산소)",
+                safeName: "제자리 가볍게 털기 (발목 보호 유산소)",
+                desc: "지면 충격을 대폭 제어하면서 관절 부하 없이 심폐 지구력 대사를 촉진하는 유산소 운동입니다.",
+                tips: "상체를 부드럽게 앞뒤로 흔들고, 뒤꿈치부터 도장 찍듯 자연스럽게 땅을 짚어 발바닥 전체로 체중을 고정 이송합니다.",
+                reason: "심폐 기능을 부드럽게 확장시키고 원활한 혈류 흐름을 활성화하기 위해 배치되었습니다.",
+                safeReason: "지면 충격이 발목에 누적되는 점을 방지하기 위해 가벼운 제자리 털기 형태의 저부하 모빌리티로 감압 조정되었습니다.",
+                painKey: "발목",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="15" y1="85" x2="85" y2="85" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="50" cy="22" r="5" class="fill-[#2A0F16]">
+                            <animate attributeName="cy" values="22;20;22" dur="1s" repeatCount="indefinite" />
+                        </circle>
+                        <path d="M50,52 L40,68 L45,85">
+                            <animate attributeName="d"
+                                     values="M50,52 L40,68 L45,85;
+                                             M50,52 L62,62 L55,78;
+                                             M50,52 L40,68 L45,85"
+                                     dur="1s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M50,52 L62,62 L55,78">
+                            <animate attributeName="d"
+                                     values="M50,52 L62,62 L55,78;
+                                             M50,52 L40,68 L45,85;
+                                             M50,52 L62,62 L55,78"
+                                     dur="1s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M50,28 L50,52" />
+                      </svg>`
+            },
+            lunge: {
+                name: "양다리 교차 굽히기 (런지)",
+                safeName: "의자 잡고 런지 버티기 (무릎 보호 런지)",
+                desc: "허벅지 전후면과 둔근의 개별 탄력을 구축하고 골반 측면 정렬 밸런스를 잡는 운동입니다.",
+                tips: "발을 앞뒤로 벌리고 서서 뒷발뒤꿈치를 세운 채, 앞무릎이 발끝보다 많이 튀어나오지 않게 수직으로 지긋이 주저앉았다 일어납니다.",
+                reason: "양측 다리의 독립적인 협응력을 향상하고 골반 외측 중둔근을 활성하기 위해 처방되었습니다.",
+                safeReason: "골반 흔들림에 따른 무릎 인대의 불필요한 마찰을 배제하고자 손잡이 지지 형태의 고정 버티기로 대체되었습니다.",
+                painKey: "무릎",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="10" y1="90" x2="90" y2="90" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="50" cy="20" r="5" class="fill-[#2A0F16]">
+                            <animate attributeName="cx" values="50;45;50" dur="2.5s" repeatCount="indefinite" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                            <animate attributeName="cy" values="20;33;20" dur="2.5s" repeatCount="indefinite" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </circle>
+                        <path d="M50,25 L50,55">
+                            <animate attributeName="d"
+                                     values="M50,25 L50,55;
+                                             M45,38 L45,68;
+                                             M50,25 L50,55"
+                                     dur="2.5s" repeatCount="indefinite" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                        <path d="M50,55 L60,72 L65,90">
+                            <animate attributeName="d"
+                                     values="M50,55 L60,72 L65,90;
+                                             M45,68 L65,68 L65,90;
+                                             M50,55 L60,72 L65,90"
+                                     dur="2.5s" repeatCount="indefinite" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                        <path d="M50,55 L38,72 L28,90">
+                            <animate attributeName="d"
+                                     values="M50,55 L38,72 L28,90;
+                                             M45,68 L45,85 L28,90;
+                                             M50,55 L38,72 L28,90"
+                                     dur="2.5s" repeatCount="indefinite" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                        <path d="M50,32 L60,32">
+                            <animate attributeName="d"
+                                     values="M50,32 L60,32;
+                                             M45,45 L58,45;
+                                             M50,32 L60,32"
+                                     dur="2.5s" repeatCount="indefinite" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1" calcMode="spline" />
+                        </path>
+                      </svg>`
+            },
+            plank: {
+                name: "코어 단단하게 버티기 (플랭크)",
+                safeName: "무릎 대고 플랭크 버티기 (허리 보호 플랭크)",
+                desc: "신체 중심부 심부 근육을 강화하여 요추 주변 기립근 정렬을 완벽하게 수평으로 잡는 정적 운동입니다.",
+                tips: "팔꿈치와 어깨 라인을 수직으로 단단히 땅에 짚고 엉덩이가 하늘로 솟구치거나 밑으로 가라앉지 않게 전신을 널빤지처럼 통제합니다.",
+                reason: "골반과 허리의 내압을 채워 전신 안정 복합체를 활성화하기 위해 계획되었습니다.",
+                safeReason: "요추 전만 구조의 무너짐과 기립근의 과사용 통증을 예방하고자 무릎 지지 지레 각도로 안전 수치를 조정했습니다.",
+                painKey: "허리",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="10" y1="80" x2="90" y2="80" stroke="#1e293b" stroke-width="2" />
+                        <circle cx="80" cy="40" r="5" class="fill-[#2A0F16]">
+                            <animate attributeName="cy" values="40;39;41;40" dur="1s" repeatCount="indefinite" />
+                        </circle>
+                        <path d="M20,70 L75,45">
+                            <animate attributeName="d"
+                                     values="M20,70 L75,45;
+                                             M20,70 L75,44;
+                                             M20,70 L75,46;
+                                             M20,70 L75,45"
+                                     dur="1s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M70,47 L70,75 L65,75" />
+                      </svg>`
+            },
+            catcow: {
+                name: "등 허리 긴장 풀기 (고양이 소 자세 스트레칭)",
+                safeName: "네발기기 자세 유지 호흡 (척추 보호 스트레칭)",
+                desc: "척추 마디마디를 상하로 이완하여 요추와 흉추 주변의 단단히 굳은 기립근 피로를 분산하는 스트레칭입니다.",
+                tips: "숨을 내쉬며 등을 하늘 쪽으로 동글게 말아 올리고, 들이마시며 척추를 부드럽게 이완시켜 시선 정면을 바라봅니다.",
+                reason: "장시간 경직되어 흐름이 차단된 기립근 사슬을 이완하여 동적 척추 정렬을 잡기 위해 처방되었습니다.",
+                safeReason: "요추 관절 인대의 미세 불안정성을 가라앉히고자 과격한 상하 만곡 운동을 제한하고 중립 호흡 지지로 안전하게 조정했습니다.",
+                painKey: "허리",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="10" y1="85" x2="90" y2="85" stroke="#1e293b" stroke-width="2" />
+                        <circle cx="25" cy="40" r="5" class="fill-[#2A0F16]">
+                            <animate attributeName="cy" values="40;45;35;40" dur="4s" repeatCount="indefinite" />
+                        </circle>
+                        <path d="M30,45 Q50,45 70,45">
+                            <animate attributeName="d"
+                                     values="M30,45 Q50,45 70,45;
+                                             M30,48 Q50,60 70,48;
+                                             M30,42 Q50,30 70,42;
+                                             M30,45 Q50,45 70,45"
+                                     dur="4s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M30,45 L30,85 M70,45 L70,85" />
+                      </svg>`
+            },
+            shoulder_stretch: {
+                name: "어깨 가동성 이완 (회전근개 스트레칭)",
+                safeName: "가슴 활짝 열어주기 (어깨 보호 스트레칭)",
+                desc: "어깨 관절 내부 회전근개의 정상 가동 궤적을 복구하여 견갑 주변 뭉친 승모근과 삼각근을 완화합니다.",
+                tips: "날개뼈 하부를 부드럽게 밀어 조여 준다는 느낌으로 팔을 어깨 뒤 사선 방향으로 무리 없이 크게 움직입니다.",
+                reason: "라운드 숄더 및 말린 견갑 정렬 각도를 올바르게 오픈하고 후방 가동 범위를 복구하기 위해 선택되었습니다.",
+                safeReason: "견봉 하부의 마찰 리스크가 있으므로 가벼운 수평 전방 가슴확장 스트레칭 각도로 대체 세팅되었습니다.",
+                painKey: "어깨",
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-[#5B1A2A] fill-none stroke-[3.5] stroke-linecap-round stroke-linejoin-round">
+                        <line x1="15" y1="90" x2="85" y2="90" stroke="#B08D7A" stroke-width="2" />
+                        <circle cx="50" cy="30" r="5" class="fill-[#2A0F16]" />
+                        <path d="M50,35 L50,75 L40,90 M50,75 L60,90" />
+                        <path d="M50,40 Q30,20 50,15 T70,40">
+                            <animate attributeName="d"
+                                     values="M50,40 Q30,20 50,15 T70,40;
+                                             M50,40 Q15,40 50,5 T85,40;
+                                             M50,40 Q30,20 50,15 T70,40"
+                                     dur="3s" repeatCount="indefinite" />
+                        </path>
+                      </svg>`
+            }
+        };
+
+        const restVisual = `<svg viewBox="0 0 100 100" class="w-24 h-24 stroke-rose-400 fill-none stroke-[2.5] stroke-linecap-round font-sans">
+                                <circle cx="50" cy="50" r="30" class="opacity-15" />
+                                <circle cx="50" cy="50" r="30">
+                                    <animate attributeName="r" values="12;40;12" dur="3.2s" repeatCount="indefinite" />
+                                    <animate attributeName="opacity" values="0.1;0.9;0.1" dur="3.2s" repeatCount="indefinite" />
+                                </circle>
+                            </svg>`;
+
+        let currentRoutine = [];
+        let activeIndex = 0;
+        let timeLeft = 0;
+        let timerId = null;
+        let isRunning = false;
+        let localStream = null;
+        let isMirrorMode = false;
+        let poseNetModel = null;
+        let animationFrameId = null;
+
+        // [1단계 -> 2단계] 신체 정보 분석 및 처방서 이동 제어기
+        function analyzeAndPrescribe() {
+            const age = parseInt(document.getElementById('userAge').value) || 18;
+            const height = parseFloat(document.getElementById('userHeight').value) || 180;
+            const weight = parseFloat(document.getElementById('userWeight').value) || 68;
+            const goal = document.getElementById('userGoal').value;
+            const level = document.getElementById('userLevel').value;
+
+            const painPoints = [];
+            document.querySelectorAll('input[name="pain"]:checked').forEach(cb => {
+                painPoints.push(cb.value);
+            });
+
+            // BMI 계산
+            const heightM = height / 100;
+            const bmi = (weight / (heightM * heightM)).toFixed(1);
+            document.getElementById('analysisBmiValue').innerText = bmi;
+
+            // BMI 상태 분류 및 뱃지 스타일 맵
+            let bmiStatusText = "정상";
+            let badgeBg = "bg-emerald-600";
+            if (bmi < 18.5) {
+                bmiStatusText = "저체중";
+                badgeBg = "bg-blue-500";
+            } else if (bmi >= 18.5 && bmi < 23) {
+                bmiStatusText = "정상";
+                badgeBg = "bg-emerald-600";
+            } else if (bmi >= 23 && bmi < 25) {
+                bmiStatusText = "과체중";
+                badgeBg = "bg-amber-600";
+            } else {
+                bmiStatusText = "비만";
+                badgeBg = "bg-rose-600";
+            }
+            
+            const statusBadge = document.getElementById('analysisBmiStatus');
+            statusBadge.innerText = bmiStatusText;
+            statusBadge.className = `text-xs ${badgeBg} text-white px-3 py-1 rounded-full font-bold shadow-sm`;
+
+            // 한글 레이블 매핑
+            const goalLabels = {
+                muscle: "💪 근육 성장 및 활성화 (Hypertrophy)",
+                rehab: "🩹 재활 및 불균형 교정 (Rehabilitation)",
+                stamina: "🏃 심폐 지구력 확보 (Cardio & Stamina)",
+                diet: "🔥 다이어트 및 체지방 컷팅 (Weight Loss)"
+            };
+            const levelLabels = {
+                beginner: "🔰 초급 (안전 위주, 넉넉한 휴식)",
+                intermediate: "🏃 중급 (표준 운동 강도)",
+                advanced: "🔥 상급 (높은 자극 강도, 타이트한 휴식)"
+            };
+
+            const gender = document.getElementById('userGender').value;
+
+            document.getElementById('analysisTargetGoal').innerText = `목표: ${goalLabels[goal] || goal}`;
+            document.getElementById('analysisIntensityLevel').innerText = `강도: ${levelLabels[level] || level}`;
+
+            // 👵👴 1. 연령대별 정밀 생체 분석 피드백
+            let ageFeedback = "";
+            if (age < 20) {
+                ageFeedback = `아직 골격근과 성장판이 발달하는 청소년 성장기 시기입니다. 축 방향으로 과도한 무게를 가해 척추를 압박하는 중량형 강하중 훈련을 엄격하게 제한하고, 바른 신체 대칭 정렬 및 고유수용감각 인지를 돕는 유연하고 동적인 가동성 움직임 위주로 코스를 구성했습니다.`;
+            } else if (age < 40) {
+                ageFeedback = `신체 기능과 조직 회복력, 그리고 근비대성 성장 발달 잠재력(Hypertrophy)이 최고조에 도달하는 청장년기 시기입니다. 다만 급격한 세트 오버트레이닝으로 인해 발생하기 쉬운 미세 부상을 철저히 배제할 수 있도록 규칙적인 정적 이완과 고가동성 코어를 최적의 연쇄 비율로 배합했습니다.`;
+            } else if (age < 60) {
+                ageFeedback = `자연 노화의 영향으로 관절 윤활액 분비가 완만하게 감소하기 시작하며 기립근의 수축성 유연성과 가동 범위가 서서히 떨어지는 연령군입니다. 따라서 과격한 충격이나 하중 운동 대신, 인대 손상을 최소화하면서 척추 마디마디의 기립 압박을 해소하는 스트레칭과 등척성 벽 지지 홀딩식 관절 보호 교정 운동을 우선 처방했습니다.`;
+            } else {
+                ageFeedback = `근감소증(Sarcopenia) 예방과 뼈 관절 골밀도의 보존이 트레이닝 시 최우선 안전 수칙으로 작동해야 하는 실버 군에 속합니다. 낙상을 효과적으로 방어할 수 있도록 골반 주변 중둔근 및 대둔근 기립 정렬 강화와 무충격 중립 버티기 자세를 전면에 영입했습니다.`;
+            }
+
+            // ⚖️ 2. BMI 지수 및 하중 정밀 제어 피드백
+            const bmiNum = parseFloat(bmi);
+            let bmiFeedback = "";
+            if (bmiNum < 18.5) {
+                bmiFeedback = `현재 질량 지수가 저체중군에 속하여 가동 시 뼈와 연골을 외부 충격 압축력으로부터 완벽하게 완충해 줄 최소한의 근육 쿠션 형성이 시급합니다. 관절 뼈대에 마찰 부하를 남기지 않도록 무부하 맨몸 둔근/코어 활성화 세트 위주로 처방을 고정했습니다.`;
+            } else if (bmiNum < 23) {
+                bmiFeedback = `현재 체질량 지수가 역학적으로 가장 이상적이고 균형 있는 정상 범주에 속해 있으므로, 신체 좌우의 불균형 요소를 말끔히 교정하고 전신의 다관절 사슬 협응 능력을 최고치로 활성화할 수 있는 가장 고효율의 표준 코스를 매칭했습니다.`;
+            } else if (bmiNum < 25) {
+                bmiFeedback = `경도의 과체중 단계로, 지탱 시 무릎 슬개골과 요추 연골 마디마디에 가해지는 누적 압축력을 연쇄적으로 감소시키기 위해 지속적인 칼로리 버닝과 심폐 근력 협응을 융합한 저하중 고반복 세션으로 구성되었습니다.`;
+            } else {
+                bmiFeedback = `현재 신체 질량 과다로 인해 단순히 서 있거나 방향을 꺾을 때 무릎 관절과 햄스트링에 집중되는 지면 수직 반발 하중이 매우 위험한 수준입니다. 따라서 점프나 아킬레스건을 과도하게 수축하는 뜀박질형 동작은 전면 우회하고, 관절 충격을 원천 봉쇄한 감압 벽 지지 푸쉬업 및 네발기기 안정성 정렬 기전을 강력히 동기화했습니다.`;
+            }
+
+            // 🧬 3. 성별 특성 역학 피드백
+            let genderFeedback = "";
+            if (gender === "여성") {
+                genderFeedback = `여성 생체 역학의 보편적 강점인 우수한 관절 가동성에 대비하여, 장기적으로 무릎 슬개골 연화증을 방지할 수 있도록 상대적으로 취약하기 쉬운 대퇴사두근 및 골반 외측 둔근의 등척성 버티기 수축력을 극대화하여 조립했습니다.`;
+            } else {
+                genderFeedback = `남성 근섬유 특성상 수축 강도와 절대적인 힘은 우수하나, 후면 기립 사슬(햄스트링 및 비복근)과 어깨 회전근개 주변이 쉽게 경직되어 충돌 부상을 일으키기 쉽습니다. 이를 원천 예방하도록 정밀 이완 및 가슴확장 이완 궤적을 넓게 삽입했습니다.`;
+            }
+
+            // 🩹 4. 불편 관절 보호 피드백
+            let painFeedback = "";
+            if (painPoints.length > 0) {
+                painFeedback = `사용자님께서 특별히 주의가 필요하다고 접수해 주신 <strong>[${painPoints.join(', ')}]</strong> 통증 부위의 연골 충돌 마찰을 배제하고자, 해당 부위를 수직이나 사선으로 짓누르는 고하중 사슬 동작을 완전히 감압 및 등척성 스트레칭 궤적으로 전면 교체하여 처방 루틴을 마감했습니다.`;
+            } else {
+                painFeedback = `현재 특정 관절 통증 주의 부위가 접수되지 않아 신체 전반의 좌우 밸런스와 유기적인 가용력을 기분 좋게 끌어올릴 수 있는 전신 협응 가속 훈련으로 계획되었습니다.`;
+            }
+
+            // 실시간 고도화 진단 보고서 템플릿 빌드 (CSS 스타일 주입)
+            let diagnosticsHTML = `
+                <div class="space-y-4 text-xs text-slate-700 font-medium leading-relaxed">
+                    <p class="text-brand-500 font-black border-b border-taupe-500/20 pb-2.5 text-[13px] flex items-center gap-1.5">
+                        <i data-lucide="shield-check" class="w-4 h-4"></i> HAP AI 피지컬 임상 진단 피드백서
+                    </p>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div class="bg-cardInner p-3.5 rounded-xl border border-taupe-500/15">
+                            <span class="text-[10px] text-brand-500 font-black uppercase block tracking-wider mb-1">👴👵 연령별 임상 피드백 (${age}세 발달군)</span>
+                            <p class="text-slate-600 leading-relaxed font-semibold">${ageFeedback}</p>
+                        </div>
+                        <div class="bg-cardInner p-3.5 rounded-xl border border-taupe-500/15">
+                            <span class="text-[10px] text-brand-500 font-black uppercase block tracking-wider mb-1">⚖️ 체형 및 질량(BMI) 진단 (지수: ${bmi})</span>
+                            <p class="text-slate-600 leading-relaxed font-semibold">${bmiFeedback}</p>
+                        </div>
+                        <div class="bg-cardInner p-3.5 rounded-xl border border-taupe-500/15">
+                            <span class="text-[10px] text-brand-500 font-black uppercase block tracking-wider mb-1">🧬 성별 해부학적 관절 특징 (${gender})</span>
+                            <p class="text-slate-600 leading-relaxed font-semibold">${genderFeedback}</p>
+                        </div>
+                        <div class="bg-cardInner p-3.5 rounded-xl border border-taupe-500/15">
+                            <span class="text-[10px] text-brand-500 font-black uppercase block tracking-wider mb-1">🚨 주의 관절 전단 부하 우회 전략</span>
+                            <p class="text-slate-600 leading-relaxed font-semibold">${painFeedback}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('analysisDiagnosticsText').innerHTML = diagnosticsHTML;
+
+            // 목적/강도에 기반한 동적 셔플 루틴 생성
+            buildRoutineDatabase(goal, level, painPoints);
+
+            // 처방된 운동 설명 카드들 (동적 배치)
+            renderPrescriptionCards(painPoints);
+
+            // 1단계 숨기고 2단계 노출
+            document.getElementById('setupScreen').classList.add('hidden');
+            document.getElementById('analysisScreen').classList.remove('hidden');
+
+            lucide.createIcons();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // [2단계 화면 전용] 새 운동 루틴 무작위 재구성 버튼 동작
+        function regeneratePrescription() {
+            const goal = document.getElementById('userGoal').value;
+            const level = document.getElementById('userLevel').value;
+            const painPoints = [];
+            document.querySelectorAll('input[name="pain"]:checked').forEach(cb => {
+                painPoints.push(cb.value);
+            });
+
+            buildRoutineDatabase(goal, level, painPoints);
+            renderPrescriptionCards(painPoints);
+
+            showToast("회원님의 정보에 기반해 완전히 새로운 대안 루틴 조합으로 처방전을 재구성했습니다!", "success");
+        }
+
+        // [2단계 -> 3단계] 맞춤 처방 타이머 룸 기동
+        function startWorkoutSession() {
+            renderRoutineList();
+            loadStep(0);
+
+            document.getElementById('analysisScreen').classList.add('hidden');
+            document.getElementById('resultSection').classList.remove('hidden');
+
+            showToast("스마트 타이머 스튜디오가 로드되었습니다. 동작을 보며 훈련을 시작하세요!", "success");
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // [3단계 -> 2단계] 뒤로가기
+        function goBackToAnalysis() {
+            clearInterval(timerId);
+            isRunning = false;
+            document.getElementById('btnPlay').innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> 시작`;
+            
+            stopCameraStream();
+
+            document.getElementById('resultSection').classList.add('hidden');
+            document.getElementById('analysisScreen').classList.remove('hidden');
+
+            lucide.createIcons();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // 배열의 순서를 무작위로 섞어주는 피셔-예이츠 셔플 알고리즘
+        function shuffleArray(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        function buildRoutineDatabase(goal, level, painPoints) {
+            let isRehab = goal === 'rehab';
+            let workTime = 50;
+            let restTime = 15;
+
+            if (level === 'beginner') {
+                workTime = isRehab ? 30 : 40;
+                restTime = isRehab ? 30 : 20;
+            } else if (level === 'intermediate') {
+                workTime = isRehab ? 40 : 50;
+                restTime = isRehab ? 25 : 15;
+            } else if (level === 'advanced') {
+                workTime = isRehab ? 50 : 60;
+                restTime = isRehab ? 20 : 10;
+            }
+
+            // 각 목적별로 다양한 대안 운동들을 포함한 '후보군 풀(Pool)'을 조립합니다.
+            let pool = [];
+            if (goal === 'muscle') {
+                pool = ['squat', 'pushup', 'lunge', 'plank', 'burpee', 'bridge'];
+            } else if (goal === 'rehab') {
+                pool = ['catcow', 'bridge', 'shoulder_stretch', 'birddog', 'split', 'cardio'];
+            } else if (goal === 'stamina') {
+                pool = ['jumping_jack', 'cardio', 'squat', 'lunge', 'pushup', 'burpee', 'plank'];
+            } else if (goal === 'diet') {
+                pool = ['jumping_jack', 'squat', 'lunge', 'burpee', 'pushup', 'plank', 'cardio'];
+            } else {
+                pool = ['squat', 'pushup', 'bridge', 'birddog', 'cardio'];
+            }
+
+            // 후보 풀을 무작위로 섞은 뒤 최대 5개의 운동만 선별하여 매번 새로운 루틴으로 다양성을 확보합니다.
+            let shuffledPool = shuffleArray([...pool]);
+            let subsetSize = Math.min(5, shuffledPool.length);
+            let listToBuild = shuffledPool.slice(0, subsetSize);
+
+            currentRoutine = [];
+            let sequenceOrder = 1;
+            listToBuild.forEach(key => {
+                const ex = exerciseData[key];
+                const hasPainInKey = painPoints.includes(ex.painKey);
+                
+                const finalName = hasPainInKey ? ex.safeName : ex.name;
+                const finalBadge = hasPainInKey ? "⚠️ 관절 안전 대체" : "✓ 목적 맞춤";
+                const badgeStyle = hasPainInKey ? "bg-[#5B1A2A]/10 text-[#5B1A2A] border-[#5B1A2A]/20" : "bg-emerald-50 text-emerald-700 border-emerald-500/20";
+
+                currentRoutine.push({
+                    type: 'work', key: key, name: finalName, badge: finalBadge, badgeStyle: badgeStyle,
+                    time: workTime, desc: ex.desc, tips: ex.tips, svg: ex.svg, order: sequenceOrder++
+                });
+
+                currentRoutine.push({
+                    type: 'rest', name: "호흡 안정 및 피로 감압 휴식", badge: "REST", badgeStyle: "bg-slate-100 text-rose-500 border-slate-200",
+                    time: restTime, desc: "편안하게 몸의 긴장을 털어내며 코로 넓게 들이마시고 입으로 뱉습니다.",
+                    tips: "다음 정밀 수축 가동을 준비하며 근관절 압박 스트레스를 상쇄합니다.", svg: restVisual
+                });
+            });
+
+            if(currentRoutine.length > 0 && currentRoutine[currentRoutine.length-1].type === 'rest') { currentRoutine.pop(); }
+        }
+
+        // 2단계 전용: 운동 설명 및 처방 사유서 카드 렌더링
+        function renderPrescriptionCards(painPoints) {
+            const container = document.getElementById('prescriptionDetailsContainer');
+            // 'work' 타입 단계만 수집하여 처방전 생성
+            const filteredRoutine = currentRoutine.filter(item => item.type === 'work');
+
+            container.innerHTML = filteredRoutine.map((item, idx) => {
+                const exRef = exerciseData[item.key];
+                const hasPain = painPoints.includes(exRef.painKey);
+                const reasonText = hasPain ? exRef.safeReason : exRef.reason;
+
+                return `
+                    <div class="bg-cardInner border border-taupe-500/25 rounded-xl p-4 flex flex-col md:flex-row gap-4 items-center shadow-sm">
+                        <!-- 미니 정석 가이드 뼈대 돔 -->
+                        <div class="w-16 h-16 bg-white border border-taupe-500/15 rounded-xl flex items-center justify-center shrink-0 shadow-inner">
+                            ${item.svg}
+                        </div>
+                        <div class="min-w-0 flex-1 space-y-1">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[9px] font-black px-2 py-0.5 rounded border ${item.badgeStyle}">${item.badge}</span>
+                                <span class="text-[10px] text-taupe-600 font-extrabold">훈련 ${idx + 1}순위 · ${item.time}초</span>
+                            </div>
+                            <h4 class="text-xs font-black text-brand-700">${item.name}</h4>
+                            <p class="text-[11px] text-slate-600 leading-relaxed font-semibold">
+                                <strong class="text-brand-500 font-black">💡 처방 이유:</strong> ${reasonText}
+                            </p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function goBackToSetup() {
+            clearInterval(timerId);
+            isRunning = false;
+            document.getElementById('btnPlay').innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> 시작`;
+            stopCameraStream();
+
+            document.getElementById('analysisScreen').classList.add('hidden');
+            document.getElementById('resultSection').classList.add('hidden');
+            document.getElementById('setupScreen').classList.remove('hidden');
+
+            lucide.createIcons();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function renderRoutineList() {
+            const container = document.getElementById('routineContainer');
+            container.innerHTML = currentRoutine.map((item, idx) => {
+                const isWork = item.type === 'work';
+                return `
+                    <div id="card-${idx}" onclick="jumpToStep(${idx})" class="cursor-pointer p-3.5 rounded-xl border border-taupe-500/25 bg-cardInner transition hover:border-taupe-500 flex items-center justify-between gap-3 shadow-sm">
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[9px] font-black px-2 py-0.5 rounded border ${item.badgeStyle}">${item.badge}</span>
+                                ${isWork ? `<span class="text-[9px] text-[#9B7463] font-bold">훈련 ${item.order}순위</span>` : ''}
+                            </div>
+                            <h5 class="text-xs font-black text-brand-700 mt-1.5 truncate">${item.name}</h5>
+                            <p class="text-[10px] text-slate-600 mt-1 leading-relaxed font-semibold">${item.tips}</p>
+                        </div>
+                        <span class="text-xs font-extrabold text-brand-500 shrink-0">${item.time}초</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function loadStep(index) {
+            if (index < 0 || index >= currentRoutine.length) return;
+            activeIndex = index;
+            const step = currentRoutine[activeIndex];
+            timeLeft = step.time;
+
+            document.getElementById('timerBadge').innerText = step.badge;
+            document.getElementById('timerBadge').className = `text-[9px] px-2.5 py-1 rounded-full border font-black uppercase ${step.badgeStyle}`;
+            document.getElementById('timerExName').innerText = step.name;
+            document.getElementById('timerExDesc').innerText = step.desc || "편안한 기류와 호흡 주기로 관절 압박을 해소하는 릴랙스 단계입니다.";
+            document.getElementById('timerExTips').innerText = step.tips || "코로 산소를 충분히 들이마시고 입으로 천천히 뱉으며 다음 수축을 대기하세요.";
+            document.getElementById('timerVisualContainer').innerHTML = step.svg;
+
+            updateTimerDisplay();
+
+            currentRoutine.forEach((_, idx) => {
+                const card = document.getElementById(`card-${idx}`);
+                if(card) {
+                    if(idx === activeIndex) {
+                        card.className = "cursor-pointer p-3.5 rounded-xl border-2 border-brand-500/60 bg-brand-50/70 flex items-center justify-between gap-3 transition font-black shadow-md";
+                    } else {
+                        card.className = "cursor-pointer p-3.5 rounded-xl border border-taupe-500/25 bg-cardInner flex items-center justify-between gap-3 transition hover:border-brand-500/50 shadow-sm";
+                    }
+                }
+            });
+        }
+
+        // 📹 거울 및 실시간 AI 자세 판독 통합 기동기
+        async function toggleCameraMirror() {
+            const videoEl = document.getElementById('cameraMirror');
+            const canvasEl = document.getElementById('poseCanvas');
+            const placeholderEl = document.getElementById('cameraPlaceholder');
+            const cameraPane = document.getElementById('cameraPane');
+            const toggleBtnText = document.getElementById('cameraToggleText');
+            const toggleIcon = document.querySelector('#btnCameraToggle i');
+
+            if (!isMirrorMode) {
+                try {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { 
+                        throw new Error("카메라 미디어 접근 불가"); 
+                    }
+
+                    // 1. AI 분석을 위한 TensorFlow.js & PoseNet 모델 로드 보장
+                    if (!poseNetModel) {
+                        document.getElementById('aiLoadingSpinner').classList.remove('hidden');
+                        poseNetModel = await posenet.load({
+                            architecture: 'MobileNetV1',
+                            outputStride: 16,
+                            inputResolution: { width: 257, height: 257 },
+                            multiplier: 0.75
+                        });
+                        document.getElementById('aiLoadingSpinner').classList.add('hidden');
+                    }
+
+                    // 2. 실시간 비디오 프레임 스트림 획득
+                    localStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { width: { ideal: 360 }, height: { ideal: 360 }, facingMode: "user" }, 
+                        audio: false 
+                    });
+                    videoEl.srcObject = localStream;
+                    
+                    placeholderEl.classList.add('hidden');
+                    videoEl.classList.remove('hidden');
+                    canvasEl.classList.remove('hidden');
+                    
+                    cameraPane.classList.remove('border-taupe-500/25');
+                    cameraPane.classList.add('border-brand-500/70', 'shadow-md', 'shadow-brand-500/5');
+                    
+                    isMirrorMode = true;
+                    toggleBtnText.innerText = "내 모습 거울 및 AI 끄기";
+                    toggleIcon.setAttribute('data-lucide', 'camera-off');
+                    
+                    document.getElementById('aiFeedbackBanner').classList.remove('hidden');
+                    showToast("AI 실시간 자세 스캔 장치가 활성화되었습니다!", "success");
+
+                    // 3. Pose 감지 루프 작동
+                    videoEl.onloadedmetadata = () => {
+                        videoEl.play();
+                        detectPose();
+                    };
+
+                } catch (err) {
+                    console.error("Camera Error: ", err);
+                    showToast("⚠️ 실시간 연결 거부! 브라우저 보안 제약 때문입니다. [해결방법]: 우측 상단 다운로드(⤓) 아이콘으로 저장한 뒤 파일을 실행하면 바로 잘 켜집니다!", "error");
+                }
+            } else {
+                stopCameraStream();
+            }
+            lucide.createIcons();
+        }
+
+        // 실시간 카메라 정지 장치
+        function stopCameraStream() {
+            const videoEl = document.getElementById('cameraMirror');
+            const canvasEl = document.getElementById('poseCanvas');
+            const placeholderEl = document.getElementById('cameraPlaceholder');
+            const cameraPane = document.getElementById('cameraPane');
+            const toggleBtnText = document.getElementById('cameraToggleText');
+            const toggleIcon = document.querySelector('#btnCameraToggle i');
+
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            if (localStream) { 
+                localStream.getTracks().forEach(track => track.stop()); 
+                localStream = null; 
+            }
+            if (videoEl) { 
+                videoEl.srcObject = null; 
+                videoEl.classList.add('hidden'); 
+            }
+            if (canvasEl) {
+                canvasEl.classList.add('hidden');
+                const ctx = canvasEl.getContext('2d');
+                ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+            }
+            if (placeholderEl) placeholderEl.classList.remove('hidden');
+            if (cameraPane) { 
+                cameraPane.classList.remove('border-brand-500/70'); 
+                cameraPane.classList.add('border-taupe-500/25'); 
+            }
+            
+            isMirrorMode = false;
+            document.getElementById('aiFeedbackBanner').classList.add('hidden');
+            if (toggleBtnText) toggleBtnText.innerText = "내 모습 거울 및 AI 분석 켜기";
+            if (toggleIcon) toggleIcon.setAttribute('data-lucide', 'camera');
+        }
+
+        // 🧠 실시간 Pose 추적 루프
+        async function detectPose() {
+            if (!isMirrorMode || !poseNetModel) return;
+
+            const video = document.getElementById('cameraMirror');
+            const canvas = document.getElementById('poseCanvas');
+            const ctx = canvas.getContext('2d');
+
+            if (canvas.width !== video.videoWidth && video.videoWidth > 0) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            }
+
+            try {
+                // 이 프레임의 단일 포즈 예측
+                const pose = await poseNetModel.estimateSinglePose(video, {
+                    flipHorizontal: false // CSS scale-x-[-1]로 이미 반전했으므로 false로 둡니다.
+                });
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // 관절 그리기 (버건디 테마 매칭)
+                drawPose(pose, ctx);
+                
+                // 실시간 각도 연산 및 피드백 처리
+                analyzeJointAngles(pose);
+
+            } catch (e) {
+                console.warn("PoseNet Loop Err: ", e);
+            }
+
+            if (isMirrorMode) {
+                animationFrameId = requestAnimationFrame(detectPose);
+            }
+        }
+
+        // 특정 관절 랜드마크 획득 보조 유닛
+        function findKeypoint(pose, name) {
+            return pose.keypoints.find(kp => kp.part === name && kp.score > 0.45);
+        }
+
+        // 세 점 사이의 사이 각도 산출 공식
+        function calculateAngle(p1, p2, p3) {
+            // p2가 항상 꼭짓점(Vertex) 역할을 합니다.
+            const d12 = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+            const d23 = Math.hypot(p2.x - p3.x, p2.y - p3.y);
+            const d13 = Math.hypot(p1.x - p3.x, p1.y - p3.y);
+            
+            if (d12 === 0 || d23 === 0) return 180;
+            
+            let cosTheta = (d12*d12 + d23*d23 - d13*d13) / (2 * d12 * d23);
+            cosTheta = Math.max(-1, Math.min(1, cosTheta)); // 부동소수점 예외 범위 격리
+            return Math.acos(cosTheta) * (180 / Math.PI);
+        }
+
+        // 🦴 스켈레톤 드로잉 머신
+        function drawPose(pose, ctx) {
+            const skeletalColor = '#5B1A2A'; // 버건디 뼈대 라인
+            const pointColor = '#10b981';    // 에메랄드 그린 핵심 피보팅
+
+            // 관절 마디 연결하기
+            const adjacentKeypoints = posenet.getAdjacentKeypoints(pose.keypoints, 0.45);
+            adjacentKeypoints.forEach(keypoints => {
+                ctx.beginPath();
+                ctx.moveTo(keypoints[0].position.x, keypoints[0].position.y);
+                ctx.lineTo(keypoints[1].position.x, keypoints[1].position.y);
+                ctx.strokeStyle = skeletalColor;
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            });
+
+            // 개별 관절 점 그리기
+            pose.keypoints.forEach(keypoint => {
+                if (keypoint.score > 0.45) {
+                    ctx.beginPath();
+                    ctx.arc(keypoint.position.x, keypoint.position.y, 6, 0, 2 * Math.PI);
+                    ctx.fillStyle = pointColor;
+                    ctx.fill();
+                    
+                    ctx.beginPath();
+                    ctx.arc(keypoint.position.x, keypoint.position.y, 7.5, 0, 2 * Math.PI);
+                    ctx.strokeStyle = '#FFFFFF';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                }
+            });
+        }
+
+        // 📐 목적 운동별 관절 분기 각도 및 피드백 처리 엔진
+        function analyzeJointAngles(pose) {
+            if (currentRoutine.length === 0) return;
+            const currentStep = currentRoutine[activeIndex];
+            if (!currentStep || currentStep.type !== 'work') {
+                document.getElementById('aiFeedbackBanner').classList.add('hidden');
+                return;
+            }
+
+            const key = currentStep.key;
+            let score = 100;
+            let feedback = "정석 자세 유지 중!";
+
+            // 주요 관절 추출
+            const lShoulder = findKeypoint(pose, 'leftShoulder');
+            const rShoulder = findKeypoint(pose, 'rightShoulder');
+            const lElbow = findKeypoint(pose, 'leftElbow');
+            const rElbow = findKeypoint(pose, 'rightElbow');
+            const lWrist = findKeypoint(pose, 'leftWrist');
+            const rWrist = findKeypoint(pose, 'rightWrist');
+            const lHip = findKeypoint(pose, 'leftHip');
+            const rHip = findKeypoint(pose, 'rightHip');
+            const lKnee = findKeypoint(pose, 'leftKnee');
+            const rKnee = findKeypoint(pose, 'rightKnee');
+            const lAnkle = findKeypoint(pose, 'leftAnkle');
+            const rAnkle = findKeypoint(pose, 'rightAnkle');
+
+            // 가시성 우수측 확인 (좌/우 신체 중 카메라에 더 뚜렷이 잡히는 측면 판단)
+            const side = (lKnee && lHip && lAnkle && (lKnee.score + lHip.score + lAnkle.score) > (rKnee?.score + rHip?.score + rAnkle?.score || 0)) ? 'left' : 'right';
+
+            if (key === 'squat') {
+                const hip = side === 'left' ? lHip : rHip;
+                const knee = side === 'left' ? lKnee : rKnee;
+                const ankle = side === 'left' ? lAnkle : rAnkle;
+
+                if (hip && knee && ankle) {
+                    const kneeAngle = calculateAngle(hip.position, knee.position, ankle.position);
+                    if (kneeAngle > 140) {
+                        score = 45;
+                        feedback = "더 주저앉으세요! 허벅지가 수평이 될 때까지.";
+                    } else if (kneeAngle > 115) {
+                        score = 75;
+                        feedback = "조금만 더 깊게 골반을 내려 버텨보세요!";
+                    } else if (kneeAngle >= 75 && kneeAngle <= 115) {
+                        score = 100;
+                        feedback = "정확한 스쿼트 깊이입니다! 자세 고정!";
+                    } else {
+                        score = 80;
+                        feedback = "지나치게 굽혀 관절에 부하가 큽니다. 살짝 드세요.";
+                    }
+                } else {
+                    score = 0;
+                    feedback = "카메라에 전신(골반, 무릎, 발목)이 보이게 뒤로 가세요.";
+                }
+            } else if (key === 'pushup') {
+                const shoulder = side === 'left' ? lShoulder : rShoulder;
+                const elbow = side === 'left' ? lElbow : rElbow;
+                const wrist = side === 'left' ? lWrist : rWrist;
+
+                if (shoulder && elbow && wrist) {
+                    const elbowAngle = calculateAngle(shoulder.position, elbow.position, wrist.position);
+                    if (elbowAngle > 150) {
+                        score = 50;
+                        feedback = "팔꿈치를 서서히 접어 몸통 하강을 이끄세요.";
+                    } else if (elbowAngle > 110) {
+                        score = 80;
+                        feedback = "거의 도달했습니다! 가슴을 3cm만 더 아래로.";
+                    } else if (elbowAngle >= 70 && elbowAngle <= 110) {
+                        score = 100;
+                        feedback = "완벽한 푸쉬업 가동 각도입니다! 정석 미세요!";
+                    } else {
+                        score = 75;
+                        feedback = "어깨 마찰 부하 영역입니다. 내려가는 깊이를 멈추세요.";
+                    }
+                } else {
+                    score = 0;
+                    feedback = "카메라에 어깨, 팔꿈치, 손목이 전부 노출되어야 합니다.";
+                }
+            } else if (key === 'lunge') {
+                const hip = side === 'left' ? lHip : rHip;
+                const knee = side === 'left' ? lKnee : rKnee;
+                const ankle = side === 'left' ? lAnkle : rAnkle;
+
+                if (hip && knee && ankle) {
+                    const kneeAngle = calculateAngle(hip.position, knee.position, ankle.position);
+                    if (kneeAngle > 130) {
+                        score = 50;
+                        feedback = "앞다리를 90도 각도가 될 때까지 지긋이 내려가세요.";
+                    } else if (kneeAngle >= 80 && kneeAngle <= 110) {
+                        score = 100;
+                        feedback = "양 무릎 교차 정석 수축 최고입니다! 고정 버티기!";
+                    } else {
+                        score = 75;
+                        feedback = "앞무릎이 발끝보다 튀어나가지 않게 중심을 뒤로 조율하세요.";
+                    }
+                } else {
+                    score = 0;
+                    feedback = "골반 아래 하지 관절이 잘 잡히도록 뒤로 물러서세요.";
+                }
+            } else if (key === 'plank') {
+                const shoulder = side === 'left' ? lShoulder : rShoulder;
+                const hip = side === 'left' ? lHip : rHip;
+                const knee = side === 'left' ? lKnee : rKnee;
+
+                if (shoulder && hip && knee) {
+                    const plankAngle = calculateAngle(shoulder.position, hip.position, knee.position);
+                    if (plankAngle >= 162 && plankAngle <= 185) {
+                        score = 100;
+                        feedback = "엄청난 코어 정렬입니다! 머리-엉덩이 수평 유지 완벽!";
+                    } else if (plankAngle < 162) {
+                        score = 60;
+                        feedback = "엉덩이가 솟았습니다. 복부에 힘을 꽉 쥐고 낮추세요!";
+                    } else {
+                        score = 65;
+                        feedback = "허리가 가라앉아 척추 부하가 심합니다. 골반을 당기세요.";
+                    }
+                } else {
+                    score = 0;
+                    feedback = "어깨선부터 엉덩이선까지 일직선 앵글을 채워 주십시오.";
+                }
+            } else {
+                // 스트레칭 및 유산소의 기본 밸런스 평가
+                if (lShoulder && rShoulder) {
+                    score = 95;
+                    feedback = "좌우 어깨 대칭 수평을 바르게 펴서 이완하세요.";
+                } else {
+                    score = 75;
+                    feedback = "가이드 모션의 리듬 속도에 맞춰 깊은 호흡을 진행하세요.";
+                }
+            }
+
+            // 정확도 UI 갱신
+            document.getElementById('aiScoreText').innerText = score > 0 ? `${score}%` : `--`;
+            
+            const scoreBar = document.getElementById('aiScoreBar');
+            scoreBar.style.width = `${score}%`;
+            
+            // 점수 색상 분기 (훌륭: 에메랄드 그린, 주의: 토프/옐로우)
+            if (score >= 90) {
+                scoreBar.style.backgroundColor = '#10b981';
+            } else if (score >= 70) {
+                scoreBar.style.backgroundColor = '#f59e0b';
+            } else {
+                scoreBar.style.backgroundColor = '#ef4444';
+            }
+            
+            document.getElementById('aiActionFeedback').innerText = feedback;
+        }
+
+        function updateTimerDisplay() {
+            const m = Math.floor(timeLeft / 60); const s = timeLeft % 60;
+            document.getElementById('timerDisplay').innerText = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function toggleTimer() {
+            if (currentRoutine.length === 0) return;
+            const btn = document.getElementById('btnPlay');
+            if (isRunning) {
+                clearInterval(timerId); isRunning = false;
+                btn.innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> 시작`;
+            } else {
+                isRunning = true;
+                btn.innerHTML = `<i data-lucide="pause" class="w-3.5 h-3.5 fill-current"></i> 정지`;
+                timerId = setInterval(() => {
+                    if (timeLeft > 0) { timeLeft--; updateTimerDisplay(); }
+                    else {
+                        clearInterval(timerId); isRunning = false;
+                        if (activeIndex < currentRoutine.length - 1) { loadStep(activeIndex + 1); toggleTimer(); }
+                        else { stopCameraStream(); openCompleteModal(); }
+                    }
+                }, 1000);
+            }
+            lucide.createIcons();
+        }
+
+        function resetTimer() {
+            clearInterval(timerId); isRunning = false;
+            document.getElementById('btnPlay').innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> 시작`;
+            if (currentRoutine.length > 0) loadStep(0);
+            lucide.createIcons();
+        }
+
+        function jumpToStep(index) {
+            clearInterval(timerId); isRunning = false;
+            document.getElementById('btnPlay').innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> 시작`;
+            loadStep(index);
+            lucide.createIcons();
+        }
+
+        function openCompleteModal() { document.getElementById('completeModal').classList.remove('hidden'); }
+        function closeCompleteModal() { document.getElementById('completeModal').classList.add('hidden'); goBackToSetup(); }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-2xl border text-xs font-bold transition duration-300 transform translate-y-2 opacity-0 w-full z-50`;
+            if (type === 'success') { toast.classList.add('bg-cardMain', 'border-[#5B1A2A]', 'text-[#5B1A2A]'); toast.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4"></i> <span>${message}</span>`; }
+            else if (type === 'error') { toast.classList.add('bg-cardMain', 'border-rose-500', 'text-rose-600'); toast.innerHTML = `<i data-lucide="alert-triangle" class="w-4 h-4"></i> <span class="leading-relaxed">${message}</span>`; }
+            container.appendChild(toast); lucide.createIcons();
+            setTimeout(() => { toast.classList.remove('translate-y-2', 'opacity-0'); }, 50);
+            setTimeout(() => { toast.classList.add('translate-y-2', 'opacity-0'); setTimeout(() => { toast.remove(); }, 300); }, 6000);
+        }
+
+        window.onload = function () {
+            lucide.createIcons();
+        };
+    </script>
+</body>
+</html>
